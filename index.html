@@ -480,6 +480,7 @@
         <p><b>Filtro de data</b> usa a data de criação do lead no CRM (quando ele entrou no funil), não a data da reserva.</p>
         <p><b>Estado</b> é sempre inferido pelo DDD do telefone, cruzado com a tabela oficial de DDDs por UF — o telefone em si nunca é lido para nada além disso e não entra no dashboard, só o nome do estado resultante. É a região onde a linha foi registrada, não necessariamente onde o lead mora hoje.</p>
         <p><b>"Leads e reservas por estado" combina dois exports diferentes.</b> A coluna "Leads" vem do funil geral (usado em todo o resto do dashboard). As colunas "Reservas" e "Receita" vêm do export separado de leads ganhos — porque no funil geral o Kommo costuma soltar o telefone/contato vinculado justamente quando o lead fecha venda (só 10 das 385 reservas mantêm telefone nesse export); o export de ganhos traz o telefone direto no lead e cobre 99% das reservas. Consequência: a linha <b>"Sem telefone"</b> mistura duas populações que não são a mesma amostra (leads sem telefone no funil geral × leads sem telefone no export de ganhos) — a taxa de conversão dela não deve ser lida como real. Nas linhas de estado nomeado (RJ, SP, MG, etc.) a comparação é válida.</p>
+        <p><b>O filtro de data cobre um intervalo maior que o funil geral</b> porque o export de leads ganhos tem reservas de leads criados bem antes de 2026 (cliente recorrente que reservou de novo agora) — 141 das 364 reservas desse export foram criadas antes do início do funil geral (2026-01-02). Sem isso, essas 141 reservas ficariam escondidas mesmo sem nenhum filtro aplicado. Por isso, se você estreitar o filtro pra um período anterior a 2026, "Leads" pode aparecer como 0 (o funil geral só cobre 2026) mesmo havendo "Reservas" nesse período — os dois não têm a mesma cobertura de datas.</p>
       </div>
     </details>
   </section>
@@ -543,11 +544,17 @@
   var fmtBRLfull = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   function fmtPct(x){ return x.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'; }
 
-  var allDates = ALL.map(function(r){ return r.d; }).sort();
+  // O intervalo do filtro de data precisa cobrir as DUAS fontes: o export de
+  // leads ganhos tem leads criados desde antes de 2026 (cliente recorrente
+  // que reservou de novo agora) — se o intervalo ficasse restrito ao range do
+  // funil geral (só 2026), essas reservas mais antigas ficariam escondidas
+  // sem nenhuma forma de exibi-las, mesmo sem filtro nenhum aplicado.
+  var allDates = ALL.map(function(r){ return r.d; }).concat(GANHOS_WON.map(function(r){ return r.d; })).sort();
   var MIN_DATE = allDates[0];
   var MAX_DATE = allDates[allDates.length - 1];
+  var leadsDatesOnly = ALL.map(function(r){ return r.d; }).sort();
   document.querySelector('footer.page').textContent =
-    'Dashboard gerado a partir do export do CRM Kommo · Pousada Le Ange · ' + fmtInt.format(ALL.length) + ' leads no período total (' + MIN_DATE + ' a ' + MAX_DATE + ')';
+    'Dashboard gerado a partir do export do CRM Kommo · Pousada Le Ange · ' + fmtInt.format(ALL.length) + ' leads no funil geral (' + leadsDatesOnly[0] + ' a ' + leadsDatesOnly[leadsDatesOnly.length - 1] + ') · o filtro de data acima cobre também reservas de leads criados antes disso (' + MIN_DATE + ' em diante)';
 
   (function(){
     var naoIdent = ALL.filter(function(r){ return r.ch === 'Não identificado'; }).length;
