@@ -219,6 +219,18 @@
     font-size: 13.5px;
     max-width: 72ch;
   }
+  .callout {
+    display: none;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    max-width: 72ch;
+  }
+  .callout.visible { display: block; }
+  .callout b { color: var(--accent-soft-ink); font-variant-numeric: tabular-nums; }
   .card .legend {
     display: flex;
     gap: 14px;
@@ -464,6 +476,7 @@
   <section class="card">
     <h2>Leads e reservas por estado</h2>
     <p class="desc">Estado inferido pelo DDD do telefone (nunca pelo número em si — só o DDD é lido, o telefone não entra no dashboard). É a região onde a linha foi registrada, não necessariamente onde o lead mora hoje. "Leads" vem do funil geral; "Reservas" e "Receita" vêm do export de leads ganhos, que tem o telefone confiável pra esse recorte (o funil geral perde o contato justamente nos leads que fecham venda — ver "Sobre estes dados"). Por isso a linha "Sem telefone" mistura duas populações diferentes e a taxa dela não é confiável — ver nota.</p>
+    <div class="callout" id="calloutReservasAntigas"></div>
     <div class="barchart" id="chartEstado"></div>
     <div class="tablewrap"><table class="data" id="tableEstado"></table></div>
   </section>
@@ -560,6 +573,35 @@
     var naoIdent = ALL.filter(function(r){ return r.ch === 'Não identificado'; }).length;
     var el = document.getElementById('pctNaoIdent');
     if (el) el.textContent = (naoIdent / ALL.length * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '% (' + fmtInt.format(naoIdent) + ' leads)';
+  })();
+
+  (function(){
+    // Quantas reservas (leads ganhos) vêm de leads criados antes do funil
+    // geral (2026) — cliente recorrente que reservou de novo. E' um aviso
+    // informativo fixo (não recalcula com o filtro de data acima) porque é
+    // sobre a composição da fonte de dados, não uma métrica do período.
+    var el = document.getElementById('calloutReservasAntigas');
+    if (!el || !GANHOS_WON.length) return;
+    var corte = leadsDatesOnly[0];
+    var antigas = GANHOS_WON.filter(function(r){ return r.d < corte; });
+    if (!antigas.length) return;
+    var porAno = {};
+    antigas.forEach(function(r){ var y = r.d.slice(0,4); porAno[y] = (porAno[y]||0) + 1; });
+    var anos = Object.keys(porAno).sort().map(function(y){ return porAno[y] + ' em ' + y; }).join(', ');
+    var pct = (antigas.length / GANHOS_WON.length * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    var revAntigas = antigas.reduce(function(s,r){ return s + r.v; }, 0);
+    el.innerHTML = '';
+    el.appendChild(document.createTextNode(
+      'De ' + fmtInt.format(GANHOS_WON.length) + ' reservas no export de leads ganhos, '
+    ));
+    var b = document.createElement('b');
+    b.textContent = fmtInt.format(antigas.length) + ' (' + pct + '%)';
+    el.appendChild(b);
+    el.appendChild(document.createTextNode(
+      ' vêm de leads criados antes do funil geral (' + corte + ') — ' + anos +
+      ' — provavelmente clientes recorrentes que reservaram de novo. Representam ' + fmtBRL.format(revAntigas) + ' da receita mostrada nesta seção.'
+    ));
+    el.classList.add('visible');
   })();
 
   var dateStart = document.getElementById('dateStart');
