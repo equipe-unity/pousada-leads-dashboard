@@ -462,17 +462,10 @@
   </section>
 
   <section class="card">
-    <h2>Entrada de leads por estado</h2>
-    <p class="desc">Estado inferido pelo DDD do telefone de contato (nunca pelo número em si — só o DDD é lido, o telefone não entra no dashboard). É a região onde a linha foi registrada, não necessariamente onde o lead mora hoje. Cobre todos os leads do funil — reservas por estado têm uma seção própria abaixo, com fonte mais confiável (ver nota).</p>
-    <div class="barchart" id="chartEstadoLeads"></div>
-    <div class="tablewrap"><table class="data" id="tableEstadoLeads"></table></div>
-  </section>
-
-  <section class="card">
-    <h2>Reservas por estado</h2>
-    <p class="desc">Mesma lógica de DDD → estado, mas calculada a partir do export de leads ganhos, não do funil geral: quando o lead fecha reserva, o export do funil geral costuma perder o telefone vinculado (~97% dos leads ganhos apareceriam como "sem telefone" se usássemos essa fonte) — o export de ganhos traz o telefone direto no lead e não tem esse problema.</p>
-    <div class="barchart" id="chartEstadoReservas"></div>
-    <div class="tablewrap"><table class="data" id="tableEstadoReservas"></table></div>
+    <h2>Leads e reservas por estado</h2>
+    <p class="desc">Estado inferido pelo DDD do telefone (nunca pelo número em si — só o DDD é lido, o telefone não entra no dashboard). É a região onde a linha foi registrada, não necessariamente onde o lead mora hoje. "Leads" vem do funil geral; "Reservas" e "Receita" vêm do export de leads ganhos, que tem o telefone confiável pra esse recorte (o funil geral perde o contato justamente nos leads que fecham venda — ver "Sobre estes dados"). Por isso a linha "Sem telefone" mistura duas populações diferentes e a taxa dela não é confiável — ver nota.</p>
+    <div class="barchart" id="chartEstado"></div>
+    <div class="tablewrap"><table class="data" id="tableEstado"></table></div>
   </section>
 
   <section class="card">
@@ -486,7 +479,7 @@
         <p><b>Grupo e Anúncio têm cobertura parcial</b> porque nem toda campanha antiga preenche utm_term/utm_content — isso é um gap de tagging na configuração dos anúncios, não um problema deste dashboard. Onde não há valor, o lead entra em "(sem grupo/anúncio identificado)".</p>
         <p><b>Filtro de data</b> usa a data de criação do lead no CRM (quando ele entrou no funil), não a data da reserva.</p>
         <p><b>Estado</b> é sempre inferido pelo DDD do telefone, cruzado com a tabela oficial de DDDs por UF — o telefone em si nunca é lido para nada além disso e não entra no dashboard, só o nome do estado resultante. É a região onde a linha foi registrada, não necessariamente onde o lead mora hoje.</p>
-        <p><b>"Entrada de leads por estado" e "Reservas por estado" vêm de exports diferentes.</b> No export do funil geral (usado em todo o resto do dashboard), o Kommo costuma soltar o telefone/contato vinculado justamente quando o lead fecha venda — só 10 das 385 reservas mantêm telefone nesse export, então usá-lo pra "reservas por estado" jogaria quase tudo em "Sem telefone", o que seria enganoso. Em vez disso, "Reservas por estado" usa o export separado de leads ganhos, onde o telefone fica direto no lead e cobre 99% das reservas. Isso também significa que "Entrada de leads por estado" mede volume de leads (não é confiável pra ver de onde vêm as reservas — use a seção de reservas pra isso).</p>
+        <p><b>"Leads e reservas por estado" combina dois exports diferentes.</b> A coluna "Leads" vem do funil geral (usado em todo o resto do dashboard). As colunas "Reservas" e "Receita" vêm do export separado de leads ganhos — porque no funil geral o Kommo costuma soltar o telefone/contato vinculado justamente quando o lead fecha venda (só 10 das 385 reservas mantêm telefone nesse export); o export de ganhos traz o telefone direto no lead e cobre 99% das reservas. Consequência: a linha <b>"Sem telefone"</b> mistura duas populações que não são a mesma amostra (leads sem telefone no funil geral × leads sem telefone no export de ganhos) — a taxa de conversão dela não deve ser lida como real. Nas linhas de estado nomeado (RJ, SP, MG, etc.) a comparação é válida.</p>
       </div>
     </details>
   </section>
@@ -969,13 +962,28 @@
     renderTable(document.getElementById('tableAnuncio'), byAd, { nameHeader: 'Anúncio' });
 
     var byEstadoLeads = aggregate(filtered.map(function(r){ return { d:r.d, w:r.w, v:r.v, ch: r.uf }; }), 'ch');
-    renderBarChart(document.getElementById('chartEstadoLeads'), byEstadoLeads, { maxItems: 15, fixedColor: colorFor('Email Marketing') });
-    renderTable(document.getElementById('tableEstadoLeads'), byEstadoLeads, { nameHeader: 'Estado', columns: ['key', 'leads', 'share'] });
-
     var filteredGanhos = GANHOS_WON.filter(function(r){ return r.d >= s && r.d <= e; });
     var byEstadoReservas = aggregate(filteredGanhos.map(function(r){ return { d:r.d, w:r.w, v:r.v, ch: r.uf }; }), 'ch');
-    renderBarChart(document.getElementById('chartEstadoReservas'), byEstadoReservas, { maxItems: 15, sortKey: 'leads', fixedColor: colorFor('WhatsApp / Indicação') });
-    renderTable(document.getElementById('tableEstadoReservas'), byEstadoReservas, { nameHeader: 'Estado', columns: ['key', 'leads', 'revenue', 'share'], labelOverrides: { leads: 'Reservas' } });
+    var byEstado = mergeEstado(byEstadoLeads, byEstadoReservas);
+    renderBarChart(document.getElementById('chartEstado'), byEstado, { maxItems: 15, fixedColor: colorFor('Email Marketing') });
+    renderTable(document.getElementById('tableEstado'), byEstado, { nameHeader: 'Estado' });
+  }
+
+  // Leads (funil geral) + reservas/receita (export de leads ganhos, unica fonte
+  // confiavel pra telefone nesse recorte) juntos por estado. "won"/"revenue"
+  // do agregado de leads sao ignorados de proposito (vem quebrado — ver notas).
+  function mergeEstado(leadsAgg, reservasAgg){
+    var map = new Map();
+    leadsAgg.forEach(function(d){ map.set(d.key, { key: d.key, leads: d.leads, won: 0, revenue: 0 }); });
+    reservasAgg.forEach(function(d){
+      var e = map.get(d.key);
+      if (!e){ e = { key: d.key, leads: 0, won: 0, revenue: 0 }; map.set(d.key, e); }
+      e.won = d.leads;
+      e.revenue = d.revenue;
+    });
+    var out = [];
+    map.forEach(function(e){ out.push({ key: e.key, leads: e.leads, won: e.won, revenue: e.revenue, rate: e.leads ? (e.won / e.leads * 100) : 0 }); });
+    return out;
   }
 
   render();
